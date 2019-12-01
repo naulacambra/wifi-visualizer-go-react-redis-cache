@@ -6,36 +6,61 @@ import (
 
 	"github.com/arangodb/go-driver"
 	"github.com/arangodb/go-driver/http"
+
+	"github.com/gin-gonic/gin"
 )
 
-func main() {
+func getClient() driver.Client {
 	conn, err := http.NewConnection(http.ConnectionConfig{
 		Endpoints: []string{"http://localhost:8529"},
 	})
+
 	if err != nil {
-		fmt.Println("Cannot connect")
-		return
+		fmt.Println(err)
 	}
-	fmt.Println("Could connect")
+
 	client, err := driver.NewClient(driver.ClientConfig{
 		Connection:     conn,
 		Authentication: driver.BasicAuthentication("root", "root"),
 	})
-	fmt.Println("Could get client")
+
 	if err != nil {
 		fmt.Println(err)
 	}
+
+	return client
+}
+
+func getDb(ctx context.Context, dbName string) driver.Database {
+	client := getClient()
+	db, err := client.Database(ctx, dbName)
+
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	return db
+}
+
+func main() {
+	r := gin.Default()
 	ctx := context.Background()
-	db, err := client.Database(ctx, "wifi-viewer")
+	db := getDb(ctx, "wifi-viewer")
 
-	if err != nil {
-		fmt.Println("Could not get db")
-	}
-	fmt.Println("Could get db")
+	r.GET("/collections/:name", func(c *gin.Context) {
+		collection := c.Params.ByName("name")
+		found, err := db.CollectionExists(ctx, collection)
+		if err != nil {
+			fmt.Println(err)
+		}
+		fmt.Println("collection is found", found)
 
-	found, err := db.CollectionExists(ctx, "myCollection")
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println("collection is found", found)
+		c.JSON(200, gin.H{
+			"name":  collection,
+			"found": found,
+		})
+	})
+
+	r.Run(":8080")
+
 }
