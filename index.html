@@ -1,0 +1,45 @@
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+
+    <title>WIFI Viewer</title>
+    <meta name="description" content="WIFI Viewer">
+    <meta name="author" content="SitePoint">
+    <script type="text/javascript" src="https://d3js.org/d3.v3.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css?v=1.0">
+
+</head>
+
+<body>
+    <div class="days-hours-heatmap">
+        <!-- calibration and render type controller -->
+        <div class="calibration" role="calibration">
+            <div class="group" role="example">
+                <svg width="120" height="17">
+                </svg>
+                <div role="description" class="description">
+                    <label>Less</label>
+                    <label>More</label>
+                </div>
+            </div>
+            <div role="toggleDisplay" class="display-control">
+                <div>
+                    <input type="radio" name="displayType" checked />
+                    <label>count</label>
+                </div>
+                <div>
+                    <input type="radio" name="displayType" />
+                    <label>channel</label>
+                </div>
+            </div>
+        </div>
+        <!-- heatmap -->
+        <svg role="heatmap" class="heatmap"></svg>
+    </div>
+
+    <script src="js/app.js"></script>
+    <!-- <script src="js/heatmap.js"></script> -->
+</body>
+
+</html>

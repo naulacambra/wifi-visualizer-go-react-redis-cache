@@ -3,5 +3,6 @@
 - [x] GO
 - [x] Gin-Gonic
 - [x] ArangoDB Go Connector
+- [ ] MAT files reader
 - [ ] React
-- [ ] D3.js
+- [x] D3.js
