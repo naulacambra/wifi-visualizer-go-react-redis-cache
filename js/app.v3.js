@@ -65,7 +65,7 @@
     .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
   var rect = null;
 
-  d3.json(`rows/${limit}/values/100000`, function (err, data) {
+  d3.json(`json/channels_${limit}_10000.json`, function (err, data) {
     data = data.data;
     data.forEach(function (valueObj) {
       valueObj['value'] = valueObj['Values'];
@@ -162,7 +162,7 @@
       })
       .transition()
       .delay(function (d) {
-        return (d.Channel.valueOf() - timeOffset) / 1000 * 15;
+        return (d.date.valueOf() - timeOffset) / 5000 * 15;
       })
       .duration(500)
       .attrTween('fill', function (d, i, a) {

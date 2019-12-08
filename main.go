@@ -11,6 +11,7 @@ import (
 	"github.com/arangodb/go-driver"
 	arangohttp "github.com/arangodb/go-driver/http"
 	"github.com/gin-contrib/gzip"
+	cors "github.com/itsjamie/gin-cors"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,6 +35,17 @@ func main() {
 	CHANNEL_AMOUNT := 24
 
 	r := gin.Default()
+
+	r.Use(cors.Middleware(cors.Config{
+		Origins:         "*",
+		Methods:         "GET",
+		RequestHeaders:  "Origin, Authorization, Content-Type",
+		ExposedHeaders:  "",
+		MaxAge:          50 * time.Second,
+		Credentials:     true,
+		ValidateHeaders: false,
+	}))
+
 	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedExtensions([]string{".html"})))
 
 	r.Static("/json", "./json")

@@ -1,15 +1,13 @@
-import React from 'react';
+import React from "react";
 // import ReactDOM from 'react-dom';
 // import { Button } from '@material-ui/core';
 // import logo from './logo.svg';
-import 'typeface-roboto';
-import './App.css';
-import Dashboard from './components/Dashboard';
+import "typeface-roboto";
+import "./App.css";
+import Dashboard from "./components/Dashboard";
 
 function App() {
-  return (
-    <Dashboard />
-  );
+  return <Dashboard />;
 }
 
 export default App;
