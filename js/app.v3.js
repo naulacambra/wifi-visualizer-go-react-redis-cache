@@ -2,7 +2,7 @@
   //UI configuration
   var
     baseLimit = 20,
-    limit = 40,
+    limit = 100,
     baseSize = 25,
     itemWidth = Math.floor(baseSize / (limit / baseLimit)),
     itemHeight = baseSize,
@@ -33,7 +33,7 @@
   var timeExtent = null,
     data = null,
     timeOffset = 0,
-    colorCalibration = ['#f6faaa', '#FEE08B', '#FDAE61', '#F46D43', '#D53E4F', '#9E0142'],
+    colorCalibration = ['#F6FAAA', '#F1ECA4', '#ECDF9F', '#E8D299', '#E3C594', '#DEB88E', '#DAAB89', '#D59E83', '#D0917E', '#CC8478', '#C77673', '#C3696D', '#BE5C68', '#B94F62', '#B5425D', '#B03557', '#AB2852', '#A71B4C', '#A20E47', '#9E0142'],
     channelValueExtent = {};
 
   //axises and scales
@@ -42,7 +42,7 @@
     xAxisScale = d3.time.scale(),
     xAxis = d3.svg.axis()
     .orient('top') // Column label position
-    .ticks(d3.time.minute, 1) // How often column label is rendered
+    .ticks(d3.time.minute, limit/baseLimit) // How often column label is rendered
     .tickFormat(secondMillisecondFormat), // How column label is rendered
     yAxisScale = d3.scale.linear()
     .range([0, axisHeight])
@@ -162,13 +162,13 @@
       })
       .transition()
       .delay(function (d) {
-        return (d.date.valueOf() - timeOffset) / 1000 * 15;
+        return (d.Channel.valueOf() - timeOffset) / 1000 * 15;
       })
       .duration(500)
       .attrTween('fill', function (d, i, a) {
         //choose color dynamicly      
         var colorIndex = d3.scale.quantize()
-          .range([0, 1, 2, 3, 4, 5])
+          .range(Array(colorCalibration.length).fill().map((_, i) => i))
           .domain((renderByCount ? baseRange : channelValueExtent[d.Channel]));
 
         return d3.interpolate(a, colorCalibration[colorIndex(d.value[0])]);
