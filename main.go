@@ -234,25 +234,34 @@ func main() {
 		fmt.Println(fmt.Sprintf("elapsed %s", durStr))
 	})
 
-	r.GET("/rows/:limit/values/:compression", func(c *gin.Context) {
+	r.GET("/rows/:limit/values/:length/loop", func(c *gin.Context) {
 		ctx := driver.WithQueryCount(context.Background())
 		limit, _ := strconv.Atoi(c.Params.ByName("limit"))
-		compression, _ := strconv.Atoi(c.Params.ByName("compression"))
+		length, _ := strconv.Atoi(c.Params.ByName("length"))
 
 		rows := make([]ChannelInfo, CHANNEL_AMOUNT*limit)
 
 		// Get rows
 		for channel := 1; channel <= CHANNEL_AMOUNT; channel++ {
-			query := "FOR doc IN channel_info_collection FILTER doc.Channel == @channel LIMIT @limit RETURN doc"
+			query := `
+				FOR doc IN channel_info_collection 
+				FILTER doc.Channel == @channel 
+				LIMIT @limit 
+				RETURN {
+					Channel: doc.Channel,
+					Values: SLICE(doc.Values, 0, @length),
+					From: doc.From
+				}`
 
 			bindVars := map[string]interface{}{
 				"channel": channel,
 				"limit":   limit,
+				"length":  length,
 			}
 
 			cursor, err := db.Query(ctx, query, bindVars)
 			if err != nil {
-				fmt.Println("ERROIR IN INTERLINKING COUNT CURSOR : ", err)
+				fmt.Println("ERROR IN INTERLINKING COUNT CURSOR : ", err)
 			}
 
 			defer cursor.Close()
@@ -272,16 +281,55 @@ func main() {
 			}
 		}
 
-		fmt.Println("ALL ROWS FETCHED")
+		c.JSON(200, gin.H{
+			"data": rows,
+		})
+	})
 
-		// Compress values
-		for row, _ := range rows {
-			nValues := make([]int, len(rows[row].Values)/compression)
-			copy(nValues, rows[row].Values[:len(rows[row].Values)/compression])
-			rows[row].Values = nValues
+	r.GET("/rows/:limit/values/:length", func(c *gin.Context) {
+		ctx := driver.WithQueryCount(context.Background())
+		limit, _ := strconv.Atoi(c.Params.ByName("limit"))
+		length, _ := strconv.Atoi(c.Params.ByName("length"))
+
+		rows := make([]ChannelInfo, CHANNEL_AMOUNT*limit)
+
+		// Get rows
+		// query := "FOR doc IN channel_info_collection FILTER doc.Channel == @channel LIMIT @limit RETURN { Channel: doc.Channel, Values: SLICE(doc.Values, 0, @length), From: doc.From }"
+		query := `RETURN FLATTEN (
+				    FOR c in 1..24
+				        RETURN (FOR doc IN channel_info_collection
+				        FILTER doc.Channel == c
+				        LIMIT @limit
+				        RETURN {
+				            Channel: doc.Channel,
+				            Values: SLICE(doc.Values, 0, @length),
+				            From: doc.From
+				        })
+				    ,
+				    1
+				)`
+
+		bindVars := map[string]interface{}{
+			"limit":  limit,
+			"length": length,
 		}
 
-		fmt.Println("ALL ROWS COMPRESSED")
+		cursor, err := db.Query(ctx, query, bindVars)
+		if err != nil {
+			fmt.Println("ERROIR IN INTERLINKING COUNT CURSOR : ", err)
+		}
+
+		defer cursor.Close()
+
+		count := int(cursor.Count())
+
+		fmt.Println("COUNT CURSOR : ", count)
+
+		cursor.ReadDocument(ctx, &rows)
+
+		fmt.Println("ROWS LENGTH : ", len(rows))
+
+		fmt.Println("ALL ROWS FETCHED")
 
 		// Extend dates
 

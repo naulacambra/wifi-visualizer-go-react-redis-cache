@@ -6,3 +6,4 @@
 - [ ] MAT files reader
 - [x] React
 - [x] D3.js
+- [ ] Docker

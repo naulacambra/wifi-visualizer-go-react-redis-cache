@@ -98,7 +98,7 @@ export default class Heatmap extends React.Component {
     this.rect = null;
 
     d3.json(
-      `http://localhost:8080/json/channels_${this.limit}_10000.json`,
+      `http://localhost:8080/rows/${this.limit}/values/1/loop`,
       (err, data) => {
         data = data.data;
         data.forEach(valueObj => {
@@ -178,12 +178,10 @@ export default class Heatmap extends React.Component {
 
         this.rect
           .filter(function(d) {
-            return d.value["PM2.5"] > 0;
+            return d.value[0] > 0;
           })
           .append("title")
-          .text(function(d) {
-            return this.monthDayFormat(d.date) + " " + d.value["PM2.5"];
-          });
+          .html(d => `${this.secondMillisecondFormat(d.date)} - ${d.value[0]}`);
 
         this.renderColor();
       }
@@ -221,7 +219,7 @@ export default class Heatmap extends React.Component {
         return d.value[0] >= 0;
       })
       .transition()
-      .delay(d => ((d.Channel.valueOf() - this.timeOffset) / 1000) * 15)
+      .delay(d => ((d.date.valueOf() - this.timeOffset) / 1000))
       .duration(500)
       .attrTween("fill", (d, i, a) => {
         //choose color dynamicly
