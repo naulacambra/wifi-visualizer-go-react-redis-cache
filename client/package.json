@@ -9,6 +9,7 @@
     "@testing-library/react": "^9.3.2",
     "@testing-library/user-event": "^7.1.2",
     "d3": "^3.5.17",
+    "google-map-react": "^1.1.5",
     "leaflet": "^1.6.0",
     "node-sass": "^4.13.1",
     "react": "^16.12.0",
