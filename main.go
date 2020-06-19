@@ -52,8 +52,8 @@ type Occupacy struct {
 	Occupacy float64
 }
 
-func tick(start time.Time) {
-	start = time.Now()
+func tick(start *time.Time) {
+	*start = time.Now()
 }
 
 func tock(start time.Time, text string) {
@@ -61,7 +61,7 @@ func tock(start time.Time, text string) {
 	elapsed := t.Sub(start)
 	durStr := fmtDuration(elapsed)
 	fmt.Println(fmt.Sprintf("Elapsed: %s: %s", durStr, text))
-	tick(start)
+	tick(&start)
 }
 
 func fmtDuration(d time.Duration) string {
@@ -132,7 +132,7 @@ func getRedisCli() *redis.Client {
 	return redis.NewClient(&redis.Options{
 		Addr:         fmt.Sprintf("%s:%s", viper.GetString("redis.url"), viper.GetString("redis.port")), // use default Addr
 		Password:     viper.GetString("redis.password"),                                                 // no password set
-		DB:           viper.GetInt("redis.database"),                                                 // use default DB
+		DB:           viper.GetInt("redis.database"),                                                    // use default DB
 		ReadTimeout:  1000 * time.Second,
 		WriteTimeout: 1000 * time.Second,
 	})
@@ -198,7 +198,7 @@ func main() {
 		bandBase := int32(4 * (band - 1))
 		channelsInBand := [4]int32{bandBase + 1, bandBase + 2, bandBase + 3, bandBase + 4}
 
-		tick(start)
+		tick(&start)
 
 		redisClient := getRedisCli()
 
@@ -279,7 +279,7 @@ func main() {
 		threshold, _ := strconv.ParseFloat(c.Params.ByName("threshold"), 64)
 		query := fmt.Sprintf("mongo/occupacy/channel/%s/threshold/%s", channel, threshold)
 
-		tick(start)
+		tick(&start)
 
 		redisClient := getRedisCli()
 
@@ -354,7 +354,7 @@ func main() {
 		threshold, _ := strconv.ParseFloat(c.Params.ByName("threshold"), 64)
 		query := fmt.Sprintf("mongo/occupacy/channels/threshold/%s", threshold)
 
-		tick(start)
+		tick(&start)
 
 		redisClient := getRedisCli()
 
@@ -438,7 +438,7 @@ func main() {
 		var rows []MongoChannelInfo
 		var data []AveragedChannelInfo
 
-		tick(start)
+		tick(&start)
 
 		redisClient := getRedisCli()
 

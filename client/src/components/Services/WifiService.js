@@ -10,8 +10,8 @@ class WifiService {
         this.constructor.instance = this;
 
         this.responses = {};
-        this.baseUrl = 'http://localhost:8080';
-        // this.baseUrl = 'http://localhost:8080';
+        debugger;
+        this.baseUrl = process.env.REACT_APP_BASE_URL;
 
         this.controller = new AbortController();
     }

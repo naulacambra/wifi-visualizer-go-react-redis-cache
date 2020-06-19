@@ -140,7 +140,7 @@ export class Places extends Component {
             <Row className="map-container">
               <GoogleMapReact
                 options={mapOptions}
-                bootstrapURLKeys={{ key: "AIzaSyAT0-rCleVv535HxMw6G75w3UzGtj27nNg" }}
+                bootstrapURLKeys={{ key: process.env.REACT_APP_GOOGLE_MAPS_API_KEY }}
                 defaultCenter={{ lat: 29.718638196063072, lng: -95.40853309631348 }}
                 defaultZoom={15}
               >
@@ -160,121 +160,6 @@ export class Places extends Component {
               </GoogleMapReact>
             </Row>
           </Col>
-
-          {/* <CardColumns>
-          <Card>
-            <Card.Img variant="top" src={'images/fcb.jpg'} />
-            <Card.Body>
-              <Card.Title>FCB Camp Nou</Card.Title>
-              <Card.Text>
-                This is a wider card with supporting text below as a natural lead-in to
-                additional content. This content is a little bit longer.
-            </Card.Text>
-              <Link to="/places/fcb" className="btn btn-primary">FCB</Link>
-            </Card.Body>
-            <Card.Footer>
-              <small className="text-muted">Last updated 3 mins ago</small>
-            </Card.Footer>
-          </Card>
-          <Card>
-            <Card.Img variant="top" src={'images/fcb.jpg'} />
-            <Card.Body>
-              <Card.Title>FCB Camp Nou</Card.Title>
-              <Card.Text>
-                This is a wider card with supporting text below as a natural lead-in to
-                additional content. This content is a little bit longer.
-            </Card.Text>
-              <Button variant="primary">Go somewhere</Button>
-            </Card.Body>
-            <Card.Footer>
-              <small className="text-muted">Last updated 3 mins ago</small>
-            </Card.Footer>
-          </Card>
-          <Card>
-            <Card.Img variant="top" src={'images/fcb.jpg'} />
-            <Card.Body>
-              <Card.Title>FCB Camp Nou</Card.Title>
-              <Card.Text>
-                This is a wider card with supporting text below as a natural lead-in to
-                additional content. This content is a little bit longer.
-            </Card.Text>
-              <Button variant="primary">Go somewhere</Button>
-            </Card.Body>
-            <Card.Footer>
-              <small className="text-muted">Last updated 3 mins ago</small>
-            </Card.Footer>
-          </Card>
-          <Card>
-            <Card.Img variant="top" src={'images/fcb.jpg'} />
-            <Card.Body>
-              <Card.Title>FCB Camp Nou</Card.Title>
-              <Card.Text>
-                This is a wider card with supporting text below as a natural lead-in to
-                additional content. This content is a little bit longer.
-            </Card.Text>
-              <Button variant="primary">Go somewhere</Button>
-            </Card.Body>
-            <Card.Footer>
-              <small className="text-muted">Last updated 3 mins ago</small>
-            </Card.Footer>
-          </Card>
-          <Card>
-            <Card.Img variant="top" src={'images/fcb.jpg'} />
-            <Card.Body>
-              <Card.Title>FCB Camp Nou</Card.Title>
-              <Card.Text>
-                This is a wider card with supporting text below as a natural lead-in to
-                additional content. This content is a little bit longer.
-            </Card.Text>
-              <Button variant="primary">Go somewhere</Button>
-            </Card.Body>
-            <Card.Footer>
-              <small className="text-muted">Last updated 3 mins ago</small>
-            </Card.Footer>
-          </Card>
-          <Card>
-            <Card.Img variant="top" src={'images/fcb.jpg'} />
-            <Card.Body>
-              <Card.Title>FCB Camp Nou</Card.Title>
-              <Card.Text>
-                This is a wider card with supporting text below as a natural lead-in to
-                additional content. This content is a little bit longer.
-            </Card.Text>
-              <Button variant="primary">Go somewhere</Button>
-            </Card.Body>
-            <Card.Footer>
-              <small className="text-muted">Last updated 3 mins ago</small>
-            </Card.Footer>
-          </Card>
-          <Card>
-            <Card.Img variant="top" src={'images/fcb.jpg'} />
-            <Card.Body>
-              <Card.Title>FCB Camp Nou</Card.Title>
-              <Card.Text>
-                This is a wider card with supporting text below as a natural lead-in to
-                additional content. This content is a little bit longer.
-            </Card.Text>
-              <Button variant="primary">Go somewhere</Button>
-            </Card.Body>
-            <Card.Footer>
-              <small className="text-muted">Last updated 3 mins ago</small>
-            </Card.Footer>
-          </Card>
-          <Card>
-            <Card.Img variant="top" src={'images/fcb.jpg'} />
-            <Card.Body>
-              <Card.Title>FCB Camp Nou</Card.Title>
-              <Card.Text>
-                This is a wider card with supporting text below as a natural lead-in to
-                additional content. This content is a little bit longer.
-            </Card.Text>
-              <Button variant="primary">Go somewhere</Button>
-            </Card.Body>
-            <Card.Footer>
-              <small className="text-muted">Last updated 3 mins ago</small>
-            </Card.Footer>
-          </Card>
-        </CardColumns> */}
         </Row>
       </Container >
     )
