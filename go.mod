@@ -9,5 +9,6 @@ require (
 	github.com/gin-gonic/gin v1.6.3 // indirect
 	github.com/go-redis/redis/v8 v8.0.0-beta.3 // indirect
 	github.com/itsjamie/gin-cors v0.0.0-20160420130702-97b4a9da7933 // indirect
+	github.com/spf13/viper v1.7.0 // indirect
 	go.mongodb.org/mongo-driver v1.3.4 // indirect
 )

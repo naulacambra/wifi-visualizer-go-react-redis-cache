@@ -19,6 +19,8 @@ import (
 	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 	cors "github.com/itsjamie/gin-cors"
+
+	"github.com/spf13/viper"
 )
 
 type ChannelInfo struct {
@@ -122,15 +124,15 @@ func getMongoDb(db *mongoDriver.Database, cli *mongoDriver.Client) (*mongoDriver
 		return db, nil
 	}
 
-	db = cli.Database("wifivis")
+	db = cli.Database(viper.GetString("mongo.database"))
 	return db, nil
 }
 
 func getRedisCli() *redis.Client {
 	return redis.NewClient(&redis.Options{
-		Addr:         "161.35.218.190:6379", // use default Addr
-		Password:     "",                    // no password set
-		DB:           0,                     // use default DB
+		Addr:         fmt.Sprintf("%s:%s", viper.GetString("redis.url"), viper.GetString("redis.port")), // use default Addr
+		Password:     viper.GetString("redis.password"),                                                 // no password set
+		DB:           viper.GetInt("redis.database"),                                                 // use default DB
 		ReadTimeout:  1000 * time.Second,
 		WriteTimeout: 1000 * time.Second,
 	})
@@ -155,8 +157,22 @@ func main() {
 
 	r.Use(static.Serve("/", static.LocalFile("./client/build", true)))
 
-	mcli, _ := mongoDriver.NewClient(mongoOptions.Client().ApplyURI("mongodb://root:root123@161.35.218.190:27017"))
+	viper.SetConfigName("settings")
+	viper.SetConfigType("json")
+	viper.AddConfigPath(".")
+	err := viper.ReadInConfig() // Find and read the config file
+	if err != nil {             // Handle errors reading the config file
+		viper.SetConfigName("settings.default")
+		err := viper.ReadInConfig() // Find and read the config file
+		if err != nil {             // Handle errors reading the config file
+			panic(fmt.Errorf("Fatal error config file: %s", err))
+		}
+	}
+
+	mcli, _ := mongoDriver.NewClient(mongoOptions.Client().ApplyURI(fmt.Sprintf("mongodb://%s:%s@%s:%s", viper.GetString("mongo.user"), viper.GetString("mongo.password"), viper.GetString("mongo.url"), viper.GetString("mongo.port"))))
 	mcli.Connect(context.Background())
+
+	collectionName := viper.GetString("mongo.collection")
 
 	var mdb *mongoDriver.Database = nil
 
@@ -197,7 +213,7 @@ func main() {
 			mdb, _ = getMongoDb(mdb, mcli)
 
 			// collection := mdb.Collection("channel_info_list_averaged_from_1_to_100")
-			collection := mdb.Collection("all_channel_100")
+			collection := mdb.Collection(collectionName)
 
 			cur, err := collection.Find(ctx, bson.D{{"channel", bson.D{{"$in", channelsInBand}}}})
 
@@ -278,7 +294,7 @@ func main() {
 			mdb, _ = getMongoDb(mdb, mcli)
 
 			// collection := mdb.Collection("channel_info_list_averaged_from_1_to_100")
-			collection := mdb.Collection("all_channel_100")
+			collection := mdb.Collection(collectionName)
 
 			cur, err := collection.Find(ctx, bson.D{{"channel", channel}})
 
@@ -352,7 +368,7 @@ func main() {
 
 			mdb, _ = getMongoDb(mdb, mcli)
 
-			collection := mdb.Collection("all_channel_100")
+			collection := mdb.Collection(collectionName)
 
 			cur, err := collection.Find(ctx, bson.D{})
 
@@ -436,7 +452,7 @@ func main() {
 			if err != nil {
 				mdb, _ = getMongoDb(mdb, mcli)
 
-				collection := mdb.Collection("all_channel_100")
+				collection := mdb.Collection(collectionName)
 
 				cur, err := collection.Find(ctx, bson.D{{"channel", ch}})
 
