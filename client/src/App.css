@@ -36,3 +36,126 @@
     transform: rotate(360deg);
   }
 }
+
+.loader {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.legend-group {
+  cursor: pointer;
+  fill: lightgray;
+}
+
+.legend-group:hover, .legend-group.active {
+  fill: black;
+}
+
+/*HOME*/
+
+.carousel-caption {
+  background: rgba(255, 255, 255, 0.8);
+  color: #666666;
+  bottom: 40px;
+}
+
+.jumbotron-fluid {
+  background-image: url('assets/world.png');
+  background-size: cover;
+}
+
+.jumbotron-fluid .carousel .carousel-item {
+  height: 300px;
+  overflow: hidden;
+}
+
+.home-container .carousel .carousel-item {
+  max-height: 360px;
+  overflow: hidden;
+}
+
+.home-container .row {
+  margin-bottom: 20px;
+}
+
+/*PLACES*/
+
+.map-container {
+  height: calc(100vh - 56px);
+  /* 56px for navbar height*/
+}
+
+.map-marker {
+  background: #f5f5f5;
+  color: #616161;
+  display: inline;
+  position: absolute;
+  align-items: center;
+  border: 3px solid #616161;
+  transform: translate(-50%, calc(-100% - 20px));
+  padding: 5px 15px;
+  font-size: 1.5em;
+  border-radius: 5px;
+  white-space: pre;
+}
+
+.map-marker::after {
+  content: "";
+  width: 20px;
+  height: 20px;
+  display: block;
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translateX(-50%);
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 10px solid #616161;
+}
+
+.map-info {
+  position: relative;
+}
+
+.map-info-btn {
+  border-radius: 50%;
+  padding: 0px 7px;
+  margin-left: 10px;
+}
+
+.map-info-lnk {
+  border-radius: 50%;
+  padding: 0px 4px;
+  margin-left: 10px;
+  border-color: green;
+  color: green;
+  position: absolute;
+  left: 80%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.map-info span {
+  display: block;
+  font-size: 0.8em;
+  padding: 0 10%;
+  width: 80%;
+  white-space: initial;
+}
+
+/*PLACE*/
+
+.place-jumbotron-title {
+  background: rgba(255, 255, 255, 0.8);
+  color: #666666;
+  padding: 10px;
+  border-radius: 5px;
+  text-align: center;
+}

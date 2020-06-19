@@ -2,37 +2,142 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"sort"
-
+	"log"
 	"strconv"
 	"time"
 
-	"github.com/arangodb/go-driver"
-	arangohttp "github.com/arangodb/go-driver/http"
-	"github.com/gin-contrib/gzip"
-	cors "github.com/itsjamie/gin-cors"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
+	mongoDriver "go.mongodb.org/mongo-driver/mongo"
+	mongoOptions "go.mongodb.org/mongo-driver/mongo/options"
 
+	redis "github.com/go-redis/redis/v8"
+
+	"github.com/gin-contrib/gzip"
+	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
+	cors "github.com/itsjamie/gin-cors"
 )
 
 type ChannelInfo struct {
-	Channel int
-	Values  []int
+	Channel int32
+	Values  []int32
 	From    time.Time
 	To      time.Time
 }
 
+type MongoChannelInfo struct {
+	ID      primitive.ObjectID `bson:"_id,omitempty"`
+	Channel int32              `bson:"channel,omitempty"`
+	Values  []int32            `bson:"values,omitempty"`
+	From    time.Time          `bson:"from,omitempty"`
+	To      time.Time          `bson:"to,omitempty"`
+}
+
+type AveragedChannelInfo struct {
+	Channel     int32
+	Value       float64
+	Thresholded int32
+	Averaged    float64
+	From        time.Time
+	To          time.Time
+}
+
+type Occupacy struct {
+	Channel  int32
+	Occupacy float64
+}
+
+func tick(start time.Time) {
+	start = time.Now()
+}
+
+func tock(start time.Time, text string) {
+	t := time.Now()
+	elapsed := t.Sub(start)
+	durStr := fmtDuration(elapsed)
+	fmt.Println(fmt.Sprintf("Elapsed: %s: %s", durStr, text))
+	tick(start)
+}
+
 func fmtDuration(d time.Duration) string {
-	d = d.Round(time.Minute)
+	d = d.Round(time.Second)
+
 	h := d / time.Hour
 	d -= h * time.Hour
+
 	m := d / time.Minute
-	return fmt.Sprintf("%02d:%02d", h, m)
+	d -= m * time.Minute
+
+	s := d / time.Second
+	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+}
+
+func averageInt(xs []int32) float64 {
+	total := int32(0)
+	for _, v := range xs {
+		total += v
+	}
+	return float64(total) / float64(len(xs))
+}
+
+func averageFloat(xs []float64) float64 {
+	total := float64(0)
+	for _, v := range xs {
+		total += v
+	}
+	return float64(total) / float64(len(xs))
+}
+
+func filter(arr []AveragedChannelInfo, cmp func(AveragedChannelInfo) bool) (ret []AveragedChannelInfo) {
+	for _, s := range arr {
+		if cmp(s) {
+			ret = append(ret, s)
+		}
+	}
+	return
+}
+
+func filterMongo(arr []MongoChannelInfo, cmp func(MongoChannelInfo) bool) (ret []MongoChannelInfo) {
+	for _, s := range arr {
+		if cmp(s) {
+			ret = append(ret, s)
+		}
+	}
+	return
+}
+
+func sum(array []AveragedChannelInfo) float64 {
+	var result float64 = 0
+	for _, v := range array {
+		result += v.Averaged
+	}
+	return result
+}
+
+func getMongoDb(db *mongoDriver.Database, cli *mongoDriver.Client) (*mongoDriver.Database, error) {
+	if db != nil {
+		return db, nil
+	}
+
+	db = cli.Database("wifivis")
+	return db, nil
+}
+
+func getRedisCli() *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr:         "161.35.218.190:6379", // use default Addr
+		Password:     "",                    // no password set
+		DB:           0,                     // use default DB
+		ReadTimeout:  1000 * time.Second,
+		WriteTimeout: 1000 * time.Second,
+	})
 }
 
 func main() {
-	CHANNEL_AMOUNT := 24
+	var start time.Time
 
 	r := gin.Default()
 
@@ -46,297 +151,362 @@ func main() {
 		ValidateHeaders: false,
 	}))
 
-	r.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedExtensions([]string{".html"})))
+	r.Use(gzip.Gzip(gzip.DefaultCompression))
 
-	r.Static("/json", "./json")
-	r.Static("/css", "./css")
-	r.Static("/js", "./js")
+	r.Use(static.Serve("/", static.LocalFile("./client/build", true)))
 
-	r.StaticFile("/", "./index.html")
+	mcli, _ := mongoDriver.NewClient(mongoOptions.Client().ApplyURI("mongodb://root:root123@161.35.218.190:27017"))
+	mcli.Connect(context.Background())
 
-	conn, err := arangohttp.NewConnection(arangohttp.ConnectionConfig{
-		Endpoints: []string{"http://localhost:8529"},
+	var mdb *mongoDriver.Database = nil
+
+	r.GET("redis/flush", func(c *gin.Context) {
+		redisClient := getRedisCli()
+		redisClient.FlushAll(c)
 	})
-	if err != nil {
-		fmt.Println("Error in Arango Connection", err)
-	}
 
-	cli, err := driver.NewClient(driver.ClientConfig{
-		Connection:     conn,
-		Authentication: driver.BasicAuthentication("root", "root"),
-	})
-	if err != nil {
-		fmt.Println("Error in Arango Client Creation", err)
-	} else {
-		fmt.Println("Arangodb client creation successful")
-	}
+	r.GET("mongo/occupacy/band/:band/threshold/:threshold", func(c *gin.Context) {
+		/*
+			U-NII-1: 1 (#36) a 4 (#48)
+			U-NII-2: 5 (#52) a 8 (#64)
+			U-NII-2-C1: 9 (#100) a 12 (#112)
+			U-NII-2-C2: 13 (#116) a 16 (#128)
+			U-NII-2-C3: 17 (#132) a 20 (#144)
+			U-NII-3: 21 (#149) a 24 (#161)
+		*/
+		ctx := c
+		band, _ := strconv.Atoi(c.Params.ByName("band"))
+		threshold, _ := strconv.ParseFloat(c.Params.ByName("threshold"), 64)
+		query := fmt.Sprintf("mongo/occupacy/band/%s/threshold/%s", band, threshold)
 
-	db, err := cli.Database(nil, "wifi-viewer")
-	if err != nil {
-		fmt.Println("Error in database selection : ", err)
-	} else {
-		fmt.Println("Selected Database wifi-viewer")
-	}
+		bandBase := int32(4 * (band - 1))
+		channelsInBand := [4]int32{bandBase + 1, bandBase + 2, bandBase + 3, bandBase + 4}
 
-	// r.GET("/", func(c *gin.Context) {
-	// 	c.HTML(http.StatusOK, "index.html", gin.H{
-	// 		"title": "WIFI Viewer",
-	// 	})
-	// })
+		tick(start)
 
-	r.GET("/channel/:number/count", func(c *gin.Context) {
-		ctx := driver.WithQueryCount(context.Background())
-		number, _ := strconv.Atoi(c.Params.ByName("number"))
+		redisClient := getRedisCli()
 
-		query := "FOR doc IN channel_info_collection FILTER doc.Channel == @channel COLLECT WITH COUNT INTO length RETURN length"
+		var rows []MongoChannelInfo
+		var occ float64 = 0
 
-		bindVars := map[string]interface{}{
-			"channel": number,
-		}
+		val, err := redisClient.Get(c, query).Result()
 
-		cursor, err := db.Query(ctx, query, bindVars)
 		if err != nil {
-			fmt.Println("ERROIR IN INTERLINKING COUNT CURSOR : ", err)
-		}
+			fmt.Println("Values are not stored : ", err)
 
-		defer cursor.Close()
+			mdb, _ = getMongoDb(mdb, mcli)
 
-		var count int
+			// collection := mdb.Collection("channel_info_list_averaged_from_1_to_100")
+			collection := mdb.Collection("all_channel_100")
 
-		cursor.ReadDocument(ctx, &count)
+			cur, err := collection.Find(ctx, bson.D{{"channel", bson.D{{"$in", channelsInBand}}}})
 
-		c.JSON(200, gin.H{
-			"rows": count,
-		})
-	})
-
-	r.GET("/channel/:number/rows/:limit", func(c *gin.Context) {
-		start := time.Now()
-
-		ctx := driver.WithQueryCount(context.Background())
-		number, _ := strconv.Atoi(c.Params.ByName("number"))
-		limit, _ := strconv.Atoi(c.Params.ByName("limit"))
-
-		query := "FOR doc IN channel_info_collection FILTER doc.Channel == @channel LIMIT @limit RETURN doc"
-
-		bindVars := map[string]interface{}{
-			"channel": number,
-			"limit":   limit,
-		}
-
-		cursor, err := db.Query(ctx, query, bindVars)
-		if err != nil {
-			fmt.Println("ERROIR IN INTERLINKING COUNT CURSOR : ", err)
-		}
-
-		defer cursor.Close()
-
-		count := int(cursor.Count())
-		rows := make([]ChannelInfo, cursor.Count())
-
-		for i := 0; i < count; i++ {
-			var document ChannelInfo
-
-			_, err := cursor.ReadDocument(ctx, &document)
-
-			rows[i] = document
-
-			if driver.IsNoMoreDocuments(err) {
-				fmt.Println("NO MORE INTERLINKIGN COUUNT DOCUMENTS : ", err)
-				break
-			} else if err != nil {
-				fmt.Println(" Error in record interlinking count  : ", err)
-			}
-		}
-
-		t := time.Now()
-		elapsed := t.Sub(start)
-		durStr := fmtDuration(elapsed)
-
-		fmt.Println(fmt.Sprintf("elapsed %s", durStr))
-
-		c.JSON(200, gin.H{
-			"data": rows,
-		})
-	})
-
-	r.GET("/rows/:limit", func(c *gin.Context) {
-		start := time.Now()
-
-		ctx := driver.WithQueryCount(context.Background())
-		limit, _ := strconv.Atoi(c.Params.ByName("limit"))
-
-		rows := make([]ChannelInfo, CHANNEL_AMOUNT*limit)
-
-		for channel := 1; channel <= CHANNEL_AMOUNT; channel++ {
-			query := "FOR doc IN channel_info_collection FILTER doc.Channel == @channel LIMIT @limit RETURN doc"
-
-			bindVars := map[string]interface{}{
-				"channel": channel,
-				"limit":   limit,
+			if err = cur.All(ctx, &rows); err != nil {
+				log.Fatal(err)
 			}
 
-			cursor, err := db.Query(ctx, query, bindVars)
-			if err != nil {
-				fmt.Println("ERROIR IN INTERLINKING COUNT CURSOR : ", err)
-			}
+			tock(start, fmt.Sprintf("Database time. Band %d", band))
 
-			defer cursor.Close()
+			data := make([]AveragedChannelInfo, len(rows))
 
-			count := int(cursor.Count())
+			for _, row := range rows {
 
-			for i := 0; i < count; i++ {
-				var document ChannelInfo
+				var avg AveragedChannelInfo
 
-				_, err := cursor.ReadDocument(ctx, &document)
-
-				rows[((channel-1)*count)+i] = document
-
-				if driver.IsNoMoreDocuments(err) {
-					fmt.Println("NO MORE INTERLINKIGN COUUNT DOCUMENTS : ", err)
-					break
-				} else if err != nil {
-					fmt.Println(" Error in record interlinking count  : ", err)
+				for j, value := range row.Values {
+					if float64(value) < threshold {
+						row.Values[j] = 0
+					} else {
+						row.Values[j] = 1
+					}
 				}
+
+				avg.Channel = row.Channel
+				avg.Averaged = averageInt(row.Values)
+
+				data = append(data, avg)
 			}
 
-			t := time.Now()
-			elapsed := t.Sub(start)
-			durStr := fmtDuration(elapsed)
+			tock(start, fmt.Sprintf("Parse time. Band %d", band))
 
-			fmt.Println(fmt.Sprintf("finished channel %s", durStr))
+			for _, channel := range channelsInBand {
+				cmp := func(d AveragedChannelInfo) bool { return d.Channel == channel }
+				values := filter(data, cmp)
+				sum := sum(values)
+				occ += sum / float64(len(values))
+			}
+
+			tock(start, fmt.Sprintf("Occupancy time. Band %d", band))
+
+			occ /= 4
+
+			err = redisClient.Set(c, query, occ, 0).Err()
+			if err != nil {
+				fmt.Println("error storing data", err)
+			}
+
+			tock(start, fmt.Sprintf("Store cache time. Band %d", band))
+
+		} else {
+			occ, _ = strconv.ParseFloat(val, 64)
 		}
 
-		t := time.Now()
-		elapsed := t.Sub(start)
-		durStr := fmtDuration(elapsed)
-
-		fmt.Println(fmt.Sprintf("elapsed %s", durStr))
-
-		sort.Slice(rows, func(i, j int) bool {
-			return rows[i].Channel < rows[j].Channel
-		})
-
-		t = time.Now()
-		elapsed = t.Sub(start)
-		durStr = fmtDuration(elapsed)
-
-		fmt.Println(fmt.Sprintf("elapsed %s", durStr))
-
 		c.JSON(200, gin.H{
-			"data": rows,
+			"band": band,
+			"data": occ,
 		})
-
-		t = time.Now()
-		elapsed = t.Sub(start)
-		durStr = fmtDuration(elapsed)
-
-		fmt.Println(fmt.Sprintf("elapsed %s", durStr))
 	})
 
-	r.GET("/rows/:limit/values/:length/loop", func(c *gin.Context) {
-		ctx := driver.WithQueryCount(context.Background())
-		limit, _ := strconv.Atoi(c.Params.ByName("limit"))
-		length, _ := strconv.Atoi(c.Params.ByName("length"))
+	r.GET("mongo/occupacy/channel/:channel/threshold/:threshold", func(c *gin.Context) {
+		ctx := c
+		channel, _ := strconv.Atoi(c.Params.ByName("channel"))
+		threshold, _ := strconv.ParseFloat(c.Params.ByName("threshold"), 64)
+		query := fmt.Sprintf("mongo/occupacy/channel/%s/threshold/%s", channel, threshold)
 
-		rows := make([]ChannelInfo, CHANNEL_AMOUNT*limit)
+		tick(start)
 
-		// Get rows
-		for channel := 1; channel <= CHANNEL_AMOUNT; channel++ {
-			query := `
-				FOR doc IN channel_info_collection 
-				FILTER doc.Channel == @channel 
-				LIMIT @limit 
-				RETURN {
-					Channel: doc.Channel,
-					Values: SLICE(doc.Values, 0, @length),
-					From: doc.From
-				}`
+		redisClient := getRedisCli()
 
-			bindVars := map[string]interface{}{
-				"channel": channel,
-				"limit":   limit,
-				"length":  length,
-			}
+		var rows []MongoChannelInfo
+		var occ float64 = 0
 
-			cursor, err := db.Query(ctx, query, bindVars)
+		val, err := redisClient.Get(c, query).Result()
+
+		if err != nil {
+			fmt.Println("Values are not stored : ", err)
+
+			mdb, _ = getMongoDb(mdb, mcli)
+
+			// collection := mdb.Collection("channel_info_list_averaged_from_1_to_100")
+			collection := mdb.Collection("all_channel_100")
+
+			cur, err := collection.Find(ctx, bson.D{{"channel", channel}})
+
 			if err != nil {
 				fmt.Println("ERROR IN INTERLINKING COUNT CURSOR : ", err)
 			}
 
-			defer cursor.Close()
+			if err = cur.All(ctx, &rows); err != nil {
+				log.Fatal(err)
+			}
 
-			count := int(cursor.Count())
+			tock(start, fmt.Sprintf("DB time. Channel %d", channel))
 
-			for i := 0; i < count; i++ {
-				var document ChannelInfo
+			fmt.Println(fmt.Sprintf("len(rows) = %d", len(rows)))
+			data := make([]AveragedChannelInfo, len(rows))
+			fmt.Println(fmt.Sprintf("row.channel = %d", rows[0].Channel))
 
-				_, err := cursor.ReadDocument(ctx, &document)
+			for _, row := range rows {
 
-				rows[((channel-1)*count)+i] = document
+				var avg AveragedChannelInfo
 
-				if driver.IsNoMoreDocuments(err) {
-					break
+				for j, value := range row.Values {
+					if float64(value) < threshold {
+						row.Values[j] = 0
+					} else {
+						row.Values[j] = 1
+					}
 				}
+
+				avg.Channel = row.Channel
+				avg.Averaged = averageInt(row.Values)
+
+				data = append(data, avg)
+			}
+
+			sum := sum(data)
+			occ += sum / float64(len(data))
+
+			tock(start, fmt.Sprintf("Parse time. Channel %d", channel))
+
+			err = redisClient.Set(c, query, occ, 0).Err()
+			if err != nil {
+				fmt.Println("error storing data", err)
+			}
+		} else {
+			occ, _ = strconv.ParseFloat(val, 64)
+		}
+
+		c.JSON(200, gin.H{
+			"channel": channel,
+			"data":    occ,
+		})
+	})
+
+	r.GET("mongo/occupacy/channels/threshold/:threshold", func(c *gin.Context) {
+		ctx := c
+		threshold, _ := strconv.ParseFloat(c.Params.ByName("threshold"), 64)
+		query := fmt.Sprintf("mongo/occupacy/channels/threshold/%s", threshold)
+
+		tick(start)
+
+		redisClient := getRedisCli()
+
+		var rows []MongoChannelInfo
+		var occs []Occupacy
+
+		val, err := redisClient.Get(c, query).Result()
+
+		if err != nil {
+			fmt.Println("Values are not stored : ", err)
+
+			mdb, _ = getMongoDb(mdb, mcli)
+
+			collection := mdb.Collection("all_channel_100")
+
+			cur, err := collection.Find(ctx, bson.D{})
+
+			if err != nil {
+				fmt.Println("ERROR IN INTERLINKING COUNT CURSOR : ", err)
+			}
+
+			if err = cur.All(ctx, &rows); err != nil {
+				log.Fatal(err)
+			}
+
+			var data []AveragedChannelInfo
+
+			for c := 1; c <= 24; c++ {
+				cmp := func(d MongoChannelInfo) bool { return d.Channel == int32(c) }
+				cRows := filterMongo(rows, cmp)
+
+				for _, row := range cRows {
+
+					var avg AveragedChannelInfo
+
+					for j, value := range row.Values {
+						if float64(value) < threshold {
+							row.Values[j] = 0
+						} else {
+							row.Values[j] = 1
+						}
+					}
+
+					avg.Channel = row.Channel
+					avg.Averaged = averageInt(row.Values)
+
+					data = append(data, avg)
+				}
+
+				sum := sum(data)
+
+				occ := Occupacy{
+					Channel:  int32(c),
+					Occupacy: sum / float64(len(data)),
+				}
+
+				occs = append(occs, occ)
+			}
+
+			serialized, _ := json.Marshal(occs)
+
+			err = redisClient.Set(c, query, serialized, 0).Err()
+			if err != nil {
+				fmt.Println("error storing data", err)
+			}
+
+		} else {
+			json.Unmarshal([]byte(val), &occs)
+		}
+
+		c.JSON(200, gin.H{
+			"data": occs,
+		})
+	})
+
+	r.GET("mongo/values/channels/threshold/:threshold/ratio/:ratio", func(c *gin.Context) {
+		ctx := c
+		threshold, _ := strconv.ParseFloat(c.Params.ByName("threshold"), 64)
+		ratio, _ := strconv.ParseInt(c.Params.ByName("ratio"), 10, 16)
+
+		var rows []MongoChannelInfo
+		var data []AveragedChannelInfo
+
+		tick(start)
+
+		redisClient := getRedisCli()
+
+		for ch := 1; ch <= 24; ch++ {
+			query := fmt.Sprintf("mongo/values/channel/%d/threshold/%d/ratio/%d", ch, threshold, ratio)
+
+			var sdata []AveragedChannelInfo
+
+			val, err := redisClient.Get(c, query).Result()
+
+			if err != nil {
+				mdb, _ = getMongoDb(mdb, mcli)
+
+				collection := mdb.Collection("all_channel_100")
+
+				cur, err := collection.Find(ctx, bson.D{{"channel", ch}})
+
+				if err = cur.All(c, &rows); err != nil {
+					log.Fatal(err)
+				}
+
+				tock(start, fmt.Sprintf("Database time. Channel %d", ch))
+
+				var ravg []AveragedChannelInfo
+				var irow int = 1
+				for _, row := range rows {
+					var avg AveragedChannelInfo
+
+					for j, value := range row.Values {
+						if float64(value) < threshold {
+							row.Values[j] = 0
+						} else {
+							row.Values[j] = 1
+						}
+					}
+
+					avg.From = row.From
+					avg.Channel = row.Channel
+					avg.Averaged = averageInt(row.Values)
+
+					ravg = append(ravg, avg)
+
+					if int64(irow)%ratio == 0 {
+						var vavg []float64
+						for _, a := range ravg {
+							vavg = append(vavg, a.Averaged)
+						}
+
+						avg := AveragedChannelInfo{
+							Channel:  ravg[0].Channel,
+							From:     ravg[0].From,
+							Averaged: averageFloat(vavg),
+						}
+
+						sdata = append(sdata, avg)
+
+						irow = 0
+						ravg = nil
+					}
+					irow++
+				}
+
+				tock(start, fmt.Sprintf("Parse time. Channel %d", ch))
+
+				serialized, _ := json.Marshal(sdata)
+
+				err = redisClient.Set(c, query, serialized, 0).Err()
+				if err != nil {
+					fmt.Println("error storing data", err)
+				}
+
+				tock(start, fmt.Sprintf("Store cache time. Channel %d", ch))
+
+				data = append(data, sdata...)
+			} else {
+				fmt.Println("unmarshalling")
+				json.Unmarshal([]byte(val), &sdata)
+
+				data = append(data, sdata...)
 			}
 		}
 
 		c.JSON(200, gin.H{
-			"data": rows,
-		})
-	})
-
-	r.GET("/rows/:limit/values/:length", func(c *gin.Context) {
-		ctx := driver.WithQueryCount(context.Background())
-		limit, _ := strconv.Atoi(c.Params.ByName("limit"))
-		length, _ := strconv.Atoi(c.Params.ByName("length"))
-
-		rows := make([]ChannelInfo, CHANNEL_AMOUNT*limit)
-
-		// Get rows
-		// query := "FOR doc IN channel_info_collection FILTER doc.Channel == @channel LIMIT @limit RETURN { Channel: doc.Channel, Values: SLICE(doc.Values, 0, @length), From: doc.From }"
-		query := `RETURN FLATTEN (
-				    FOR c in 1..24
-				        RETURN (FOR doc IN channel_info_collection
-				        FILTER doc.Channel == c
-				        LIMIT @limit
-				        RETURN {
-				            Channel: doc.Channel,
-				            Values: SLICE(doc.Values, 0, @length),
-				            From: doc.From
-				        })
-				    ,
-				    1
-				)`
-
-		bindVars := map[string]interface{}{
-			"limit":  limit,
-			"length": length,
-		}
-
-		cursor, err := db.Query(ctx, query, bindVars)
-		if err != nil {
-			fmt.Println("ERROIR IN INTERLINKING COUNT CURSOR : ", err)
-		}
-
-		defer cursor.Close()
-
-		count := int(cursor.Count())
-
-		fmt.Println("COUNT CURSOR : ", count)
-
-		cursor.ReadDocument(ctx, &rows)
-
-		fmt.Println("ROWS LENGTH : ", len(rows))
-
-		fmt.Println("ALL ROWS FETCHED")
-
-		// Extend dates
-
-		fmt.Println("ALL ROWS EXTENDED")
-
-		c.JSON(200, gin.H{
-			"data": rows,
+			"data": data,
 		})
 	})
 
